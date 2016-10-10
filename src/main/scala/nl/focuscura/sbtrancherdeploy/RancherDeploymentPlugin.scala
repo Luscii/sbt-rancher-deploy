@@ -32,7 +32,7 @@ object RancherDeploymentPlugin extends AutoPlugin {
 
     lazy val rancherBaseSettings = Seq(
       rancherServices := Seq(),
-//      rancherDockerImage := "",
+      rancherDockerImage := "",
       rancherAllowDeployment := true,
       rancherDeployDryRun := false,
       rancherUpgrade := Def.taskDyn[Unit] {
@@ -70,16 +70,17 @@ object RancherDeploymentPlugin extends AutoPlugin {
       aggregate in rancherDeploy := false,
       rancherDeploy := Def.taskDyn[RancherDeploymentResult] {
         val aggregatesFilter = ScopeFilter(inAggregates(thisProjectRef.value))
-
         Def.taskDyn {
-          val aggregatedShouldFinish = rancherShouldFinishUpgrade.toTask.all(aggregatesFilter) map (_ forall identity)
           val allImageTasks = rancherDockerImage.toTask.all(aggregatesFilter)
-          rancherUpgrade.toTask.all(aggregatesFilter).dependsOn(stopDeploymentIfNotAllowed).dependsOn(allImageTasks).value
           Def.taskDyn {
-            if (aggregatedShouldFinish.value) {
-              rancherFinishUpgrade.toTask.all(aggregatesFilter) map {_ => RancherDeploymentResult.Finished}
-            } else {
-              rancherRollback.toTask.all(aggregatesFilter) map {_=> RancherDeploymentResult.RolledBack}
+            val aggregatedShouldFinish = rancherShouldFinishUpgrade.toTask.all(aggregatesFilter) map (_ forall identity)
+            rancherUpgrade.toTask.all(aggregatesFilter).dependsOn(stopDeploymentIfNotAllowed).dependsOn(allImageTasks).value
+            Def.taskDyn {
+              if (aggregatedShouldFinish.value) {
+                rancherFinishUpgrade.toTask.all(aggregatesFilter) map {_ => RancherDeploymentResult.Finished}
+              } else {
+                rancherRollback.toTask.all(aggregatesFilter) map {_=> RancherDeploymentResult.RolledBack}
+              }
             }
           }
         }
