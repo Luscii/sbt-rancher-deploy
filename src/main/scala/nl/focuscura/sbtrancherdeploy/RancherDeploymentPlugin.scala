@@ -71,10 +71,10 @@ object RancherDeploymentPlugin extends AutoPlugin {
       rancherDeploy := Def.taskDyn[RancherDeploymentResult] {
         val aggregatesFilter = ScopeFilter(inAggregates(thisProjectRef.value))
         Def.taskDyn {
-          val allImageTasks = rancherDockerImage.toTask.all(aggregatesFilter)
+          rancherDockerImage.toTask.all(aggregatesFilter).value
           Def.taskDyn {
             val aggregatedShouldFinish = rancherShouldFinishUpgrade.toTask.all(aggregatesFilter) map (_ forall identity)
-            rancherUpgrade.toTask.all(aggregatesFilter).dependsOn(stopDeploymentIfNotAllowed).dependsOn(allImageTasks).value
+            rancherUpgrade.toTask.all(aggregatesFilter).dependsOn(stopDeploymentIfNotAllowed).value
             Def.taskDyn {
               if (aggregatedShouldFinish.value) {
                 rancherFinishUpgrade.toTask.all(aggregatesFilter) map {_ => RancherDeploymentResult.Finished}
