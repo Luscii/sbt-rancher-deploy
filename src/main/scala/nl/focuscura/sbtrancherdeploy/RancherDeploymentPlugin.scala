@@ -39,7 +39,7 @@ object RancherDeploymentPlugin extends AutoPlugin {
         if (rancherServices.value.nonEmpty) {
           Def.taskDyn {
             val dockerImage = rancherDockerImage.value
-            rancherActionOnService("upgrade") {
+            rancherActionOnService(s"upgrade to $dockerImage") {
               _.upgradeService(_, Some(dockerImage))
             }
           }
