@@ -37,7 +37,10 @@ lazy val `subproject-2` = project.in(file("subproject-2"))
 
 lazy val `subproject-without-deployment` = project.in(file("subproject-without-deployment"))
   .settings(baseSettings)
-  .settings(name := "subproject-without-deployment")
+  .settings(
+    name := "subproject-without-deployment"
+  )
+
 
 lazy val verifyDeploymentResult = taskKey[Unit]("")
 verifyDeploymentResult := {

@@ -22,6 +22,7 @@ object RancherDeploymentPlugin extends AutoPlugin {
     lazy val rancherAllowDeployment = taskKey[Boolean]("Returns true if deployment is allowed, false otherwise")
     lazy val rancherServices = taskKey[Seq[String]]("Services to upgrade once the docker image is pushed")
 
+    lazy val rancherTest = taskKey[Unit]("")
 
     lazy val rancherDeploy = taskKey[RancherDeploymentResult]("Build docker image, push it to Docker hub, upgrade the services, when upgrade can be finished, do so, otherwise roll back")
     lazy val rancherUpgrade = taskKey[Unit]("Build docker image, push it to Docker hub, upgrade services returned by rancherServices")
@@ -37,14 +38,14 @@ object RancherDeploymentPlugin extends AutoPlugin {
       rancherDeployDryRun := false,
       rancherUpgrade := Def.taskDyn[Unit] {
         if (rancherServices.value.nonEmpty) {
-          Def.taskDyn {
+          Def.taskDyn[Unit] {
             val dockerImage = rancherDockerImage.value
             rancherActionOnService(s"upgrade to $dockerImage") {
               _.upgradeService(_, Some(dockerImage))
             }
           }
         } else {
-          Def.task(())
+          Def.task[Unit] {}
         }
       }.value,
       rancherFinishUpgrade := Def.taskDyn[RancherDeploymentResult] {
@@ -53,7 +54,7 @@ object RancherDeploymentPlugin extends AutoPlugin {
             _.finishUpgrade(_)
           }
         } else {
-          Def.task {}
+          Def.task[Unit] {}
         }) map { _ => RancherDeploymentResult.Finished}
       }.value,
 
@@ -63,24 +64,28 @@ object RancherDeploymentPlugin extends AutoPlugin {
             _.rollbackUpgrade(_)
           }
         } else {
-          Def.task {}
+          Def.task[Unit] {}
         }) map { _ => RancherDeploymentResult.RolledBack}
       }.value,
       rancherShouldFinishUpgrade := true,
       aggregate in rancherDeploy := false,
+      test in rancherDeploy := (test in Test).value,
       rancherDeploy := Def.taskDyn[RancherDeploymentResult] {
-        val aggregatesFilter = ScopeFilter(inAggregates(thisProjectRef.value))
-
+        val p = thisProjectRef.value
+        val aggregatesFilter = ScopeFilter(inAggregates(p))
         Def.taskDyn {
-          val aggregatedShouldFinish = rancherShouldFinishUpgrade.toTask.all(aggregatesFilter) map (_ forall identity)
-          rancherUpgrade.toTask.all(aggregatesFilter).dependsOn(stopDeploymentIfNotAllowed).value
-          Def.taskDyn[RancherDeploymentResult] {
-            if (aggregatedShouldFinish.value) {
-              rancherFinishUpgrade.toTask.all(aggregatesFilter) map {_ => RancherDeploymentResult.Finished}
-            } else {
-              rancherRollback.toTask.all(aggregatesFilter) map {_=> RancherDeploymentResult.RolledBack}
+          val t = (test in rancherDeploy).all(aggregatesFilter).value
+          Def.taskDyn {
+            val aggregatedShouldFinish: Def.Initialize[Task[Boolean]] = rancherShouldFinishUpgrade.all(aggregatesFilter) map (_ forall identity)
+            rancherUpgrade.all(aggregatesFilter).dependsOn(stopDeploymentIfNotAllowed).value
+            Def.taskDyn[RancherDeploymentResult] {
+              if (aggregatedShouldFinish.value) {
+                rancherFinishUpgrade.all(aggregatesFilter) map {_ => RancherDeploymentResult.Finished}
+              } else {
+                rancherRollback.all(aggregatesFilter) map {_ => RancherDeploymentResult.RolledBack}
+              }
             }
-          }.dependsOn(rancherDockerImage.toTask.all(aggregatesFilter))
+          }
         }
       }.value,
       rancherDeploymentResult := state.value.get(rancherDeploymentResultAttribute),
@@ -92,7 +97,7 @@ object RancherDeploymentPlugin extends AutoPlugin {
 
         val result = Project.runTask(rancherDeploy, stateWithEnvironment, true) match {
           case None => RancherDeploymentResult.NoDeploymentDefined
-          case Some((_, Inc(failure))) => RancherDeploymentResult.Failed(failure.getCause)
+          case Some((_, Inc(failure))) => RancherDeploymentResult.Failed(Option(failure.getCause))
           case Some((_, Value(v: RancherDeploymentResult))) => v
         }
         state.put(rancherDeploymentResultAttribute, result)
@@ -101,10 +106,11 @@ object RancherDeploymentPlugin extends AutoPlugin {
 
     sealed trait RancherDeploymentResult
     object RancherDeploymentResult {
-      case class Failed(cause: Throwable) extends RancherDeploymentResult
+      case class Failed(cause: Option[Throwable]) extends RancherDeploymentResult
       case object Finished extends RancherDeploymentResult
       case object RolledBack extends RancherDeploymentResult
       case object NoDeploymentDefined extends RancherDeploymentResult
+
     }
   }
 
