@@ -10,6 +10,7 @@ import sbt.{Command, _}
 
 import scala.concurrent.{Await, Future}
 import scala.concurrent.duration.Duration
+import scala.util.Try
 
 object RancherDeploymentPlugin extends AutoPlugin {
   override def trigger = allRequirements
@@ -34,7 +35,21 @@ object RancherDeploymentPlugin extends AutoPlugin {
     lazy val rancherBaseSettings = Seq(
       rancherServices := Seq(),
       rancherDockerImage := "",
-      rancherAllowDeployment := true,
+      (rancherAllowDeployment in Global) := Def.taskDyn[Boolean] {
+        Def.taskDyn {
+          val config = rancherDeploymentConfig.value
+          val currentBranch = git.gitCurrentBranch.value
+          if (!(config.allowAnyBranch || config.isBranchAllowed(currentBranch))) {
+            throw new Exception(
+              s"""Deploying current git branch $currentBranch to the "${config.environment}" environment.
+                 | Allowed branches: ${config.allowedBranches.mkString(", ")}""".stripMargin)
+          }
+          if (!config.allowDeploymentOfUncommittedChanges && git.gitUncommittedChanges.value) {
+            throw new Exception(s"""Deployment of uncommitted changes to the "${config.environment}" environment is not allowed""")
+          }
+          Def.task { true }
+        }
+      }.value,
       rancherDeployDryRun := false,
       rancherUpgrade := Def.taskDyn[Unit] {
         if (rancherServices.value.nonEmpty) {
@@ -71,13 +86,14 @@ object RancherDeploymentPlugin extends AutoPlugin {
       aggregate in rancherDeploy := false,
       test in rancherDeploy := (test in Test).value,
       rancherDeploy := Def.taskDyn[RancherDeploymentResult] {
+        (rancherAllowDeployment in Global).value
         val p = thisProjectRef.value
         val aggregatesFilter = ScopeFilter(inAggregates(p))
         Def.taskDyn {
           val t = (test in rancherDeploy).all(aggregatesFilter).value
           Def.taskDyn {
             val aggregatedShouldFinish: Def.Initialize[Task[Boolean]] = rancherShouldFinishUpgrade.all(aggregatesFilter) map (_ forall identity)
-            rancherUpgrade.all(aggregatesFilter).dependsOn(stopDeploymentIfNotAllowed).value
+            rancherUpgrade.all(aggregatesFilter).value
             Def.taskDyn[RancherDeploymentResult] {
               if (aggregatedShouldFinish.value) {
                 rancherFinishUpgrade.all(aggregatesFilter) map {_ => RancherDeploymentResult.Finished}
@@ -120,6 +136,11 @@ object RancherDeploymentPlugin extends AutoPlugin {
 
 
   case class DeploymentConfig(environment: String, config: Config) {
+    import scala.collection.JavaConversions._
+    def allowedBranches: Set[String] = Try(config.getStringList("allowed-branches").toSet).getOrElse(Set("*"))
+    def allowAnyBranch: Boolean = allowedBranches contains "*"
+    def isBranchAllowed(branch: String): Boolean = allowedBranches contains branch
+    def allowDeploymentOfUncommittedChanges: Boolean = Try(config.getBoolean("allow-uncommitted-changes")).getOrElse(true)
     object rancher {
       def url: String = config.getString("rancher.url")
       def stack: String = config.getString("rancher.stack")
@@ -142,12 +163,6 @@ object RancherDeploymentPlugin extends AutoPlugin {
     }
   }
 
-
-  private def stopDeploymentIfNotAllowed = Def.task[Unit] {
-    if (!rancherAllowDeployment.value) {
-      throw new Exception(s"""Deployment is not allowed""")
-    }
-  }
 
   private def rancherDeploymentConfig = Def.task[DeploymentConfig] {
     val configFile = (baseDirectory in ThisBuild).value / "deployment.conf"
@@ -190,137 +205,3 @@ object RancherDeploymentPlugin extends AutoPlugin {
       log info s"$rancherLocation $actionName succeeded"
     }
 }
-
-
-
-
-//object Deployment {
-//
-//  sealed trait ActionAfterUpgrade
-//  object ActionAfterUpgrade {
-//    case object FinishUpgrade extends ActionAfterUpgrade
-//    case object Rollback extends ActionAfterUpgrade
-//  }
-//
-//
-////  import RancherDeploymentTasks.Keys._
-//  import sbtdocker.DockerPlugin.autoImport._
-//
-//  val Config = config("deployment")
-//
-//  object Keys {
-//    lazy val deploy = inputKey[Unit]("Deploy connect-auth module")
-//    lazy val deploymentImageName = taskKey[String]("Tag of the docker image to deploy")
-//    lazy val deploymentStopIfNotAllowed = taskKey[Unit]("Stop the deployment when certain criteria aren't met")
-//    lazy val deployUpgrade = inputKey[Unit]("Build docker images, push them, and upgrade all rancher services")
-//    lazy val deployRollback = inputKey[Unit]("Roll back all rancher services")
-//    lazy val deployFinishUpgrade = inputKey[Unit]("Finish upgrade of all rancher services")
-//    lazy val deploySucceeded = inputKey[Boolean]("Returns true when everything is okay after upgrading")
-//  }
-//
-//  import Keys._
-//
-//  val deploySettings = RancherDeploymentTasks.settings ++ Seq(
-//    (imageNames in docker) := Seq(ImageName((deploymentImageName in Deployment.Config).value)),
-//    rancherServiceImageUuid := Some((deploymentImageName in Deployment.Config).value)
-//  ) ++ inConfig(Deployment.Config)(Seq(
-//    deploySucceeded := true, // no tests yet, so dummy succeed
-//    deploymentImageName := s"focuscura/${name.value}:${git.gitCurrentBranch.value}-${git.gitHeadCommit.value.getOrElse("NOCOMMIT")}",
-//    rancherUpgradeCompletion := Def.taskDyn[RancherDeploymentTasks.UpgradeCompletion] {
-//      streams.value.log.info("Running integration tests")
-//      if (deploySucceeded.value) {
-//        Def.task(RancherDeploymentTasks.FinishUpgrade)
-//      } else {
-//        Def.task(RancherDeploymentTasks.RollbackUpgrade)
-//      }
-//    }.value,
-//
-//    deploy := Def.inputTaskDyn[Unit] {
-//      import sbt.complete.DefaultParsers.spaceDelimited
-//      val args = spaceDelimited("[environment]").parsed
-//      val environment = args.ensuring(_.length == 1, "Pass the environment name as the argument").head
-//      Def.taskDyn[Unit] {
-//        val deploymentConfig = readDeploymentConfig(environment).value
-//        actualDeployment(deploymentConfig)
-//      }
-//    }.evaluated,
-//    deployUpgrade := Def.inputTaskDyn[Unit] {
-//      val config = configFromEnvironmentArg.parsed
-//      Def.taskDyn {
-//        deployUntilUpgraded(config.value)
-//      }
-//    }.evaluated,
-//    deployRollback := Def.inputTaskDyn[Unit] {
-//      val config = configFromEnvironmentArg.parsed
-//      Def.taskDyn {
-//        rancherRollbackUpgrade.toTask(config.value.rancher.taskArgs)
-//      }
-//    }.evaluated,
-//    deployFinishUpgrade := Def.inputTaskDyn[Unit] {
-//      val config = configFromEnvironmentArg.parsed
-//      Def.taskDyn {
-//        rancherFinishUpgrade.toTask(config.value.rancher.taskArgs)
-//      }
-//    }.evaluated
-//  ))
-//
-//  def deployUntilUpgraded(config: DeploymentConfig): Def.Initialize[Task[Unit]] = {
-//    Def.sequential(
-//      stopDeploymentIfNotAllowed(config),
-//      sbtdocker.DockerKeys.docker,
-//      sbtdocker.DockerKeys.dockerPush,
-//      rancherUpgrade.toTask(config.rancher.taskArgs)
-//    )
-//  }
-//
-//  case class DeploymentConfig(environment: String, config: Config) {
-//    import scala.collection.JavaConversions._
-//    def allowedBranches: Set[String] = config.getStringList("allowed-branches").toSet
-//    def allowAnyBranch: Boolean = allowedBranches contains "*"
-//    def isBranchAllowed(branch: String): Boolean = allowedBranches contains branch
-//    def allowDeploymentOfUncommittedChanges: Boolean = config.getBoolean("allow-uncommitted-changes")
-//    object rancher {
-//      def url: String = config.getString("rancher.url")
-//      def stack: String = config.getString("rancher.stack")
-//      def basicAuthUsername: String = config.getString("rancher.basic-auth.username")
-//      def basicAuthPassword: String = config.getString("rancher.basic-auth.password")
-//      def taskArgs: String = " " + url + " " + stack + " " + basicAuthUsername + " " + basicAuthPassword
-//    }
-//  }
-//
-//  private def stopDeploymentIfNotAllowed(config: DeploymentConfig) = Def.task {
-//
-//    val currentBranch = git.gitCurrentBranch.value
-//    if (!(config.allowAnyBranch || config.isBranchAllowed(currentBranch))) {
-//      throw new Exception(
-//        s"""Deploying current git branch $currentBranch to the "${config.environment}" environment.
-//            | Allowed branches: ${config.allowedBranches.mkString(", ")}""".stripMargin)
-//    }
-//    if (!config.allowDeploymentOfUncommittedChanges && git.gitUncommittedChanges.value) {
-//      throw new Exception(s"""Deployment of uncommitted changes to the "${config.environment}" environment is not allowed""")
-//    }
-//  }
-//
-//  private def actualDeployment(config: DeploymentConfig) = Def.taskDyn[Unit] {
-//    Def.sequential(
-//      stopDeploymentIfNotAllowed(config),
-//      sbtdocker.DockerKeys.docker,
-//      sbtdocker.DockerKeys.dockerPush,
-//      rancherUpgrade.toTask(config.rancher.taskArgs)
-//    )
-//  }
-//
-//  private def readDeploymentConfig(environmentName: String) = Def.task[DeploymentConfig] {
-//    val configFile = (baseDirectory in ThisBuild).value / "deployment.conf"
-//    val config = ConfigFactory.parseFile(configFile).resolve()
-//    DeploymentConfig(environmentName, config.getConfig(s"environments.$environmentName"))
-//  }
-//
-//  private def configFromEnvironmentArg = Def.inputTaskDyn[DeploymentConfig] {
-//    import sbt.complete.DefaultParsers.spaceDelimited
-//    val args = spaceDelimited("[environment]").parsed
-//    val environment = args.ensuring(_.length == 1, "Pass the environment name as the argument").head
-//    readDeploymentConfig(environment)
-//  }
-//
-//}

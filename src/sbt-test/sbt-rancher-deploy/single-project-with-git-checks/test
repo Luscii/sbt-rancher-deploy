@@ -1,0 +1,24 @@
+# deploy
+$ exec git init
+$ touch dummy-file
+$ exec git add dummy-file
+$ exec git commit -m "Initial commit"
+$ exec git checkout -b branch-for-testing
+> rancher-deploy-to environment-allowing-only-master
+> assertDeploymentResult failed
+
+$ exec git checkout master
+> rancher-deploy-to environment-allowing-only-master
+> assertDeploymentResult finished
+
+> rancher-deploy-to environment-allowing-any-branch
+> assertDeploymentResult finished
+
+# force uncommitted changes
+$ delete dummy-file
+
+> rancher-deploy-to environment-not-allowing-uncommitted-changes
+> assertDeploymentResult failed
+
+> rancher-deploy-to environment-allowing-uncommitted-changes
+> assertDeploymentResult finished

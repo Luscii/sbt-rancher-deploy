@@ -1,6 +1,6 @@
 import sbt._
 import Defaults._
-
+version := "0.1.0"
 organization := "nl.focuscura"
 scalaVersion := "2.10.6"
 scalacOptions ++= Seq("-unchecked", "-feature", "-explaintypes", "-deprecation")
