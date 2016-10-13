@@ -13,11 +13,6 @@ lazy val root = project.in(file("."))
     rancherShouldFinishUpgrade := {
       streams.value.log.info("This is a dummy integration test that succeeds")
       true
-    },
-    verifyDeploymentResult := {
-      val deploymentResult = rancherDeploymentResult.value
-      assert(deploymentResult == Some(RancherDeploymentResult.Finished), s"expected ${Some(RancherDeploymentResult.Finished)}, actual $deploymentResult")
-      streams.value.log.info("Deployment result as expected")
     }
   )
 
@@ -46,11 +41,3 @@ lazy val `subproject-without-deployment` = project.in(file("subproject-without-d
   )
 
 
-lazy val verifyDeploymentResult = taskKey[Unit]("")
-verifyDeploymentResult := {
-  val deploymentResult = rancherDeploymentResult.value
-
-  val expected = Some(RancherDeploymentResult.Failed(None))
-  assert(deploymentResult == expected, s"expected $expected, actual $deploymentResult")
-  streams.value.log.info("Deployment result as expected")
-}

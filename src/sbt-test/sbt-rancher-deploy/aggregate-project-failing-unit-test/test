@@ -1,4 +1,3 @@
 # deploy
-# s> test
-> rancher-deploy-to fake-environment
-> verifyDeploymentResult
+-> rancher-deploy-to fake-environment
+

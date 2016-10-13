@@ -3,7 +3,6 @@ package nl.focuscura.sbtrancherdeploy
 //import Deployment.DeploymentConfig
 import com.typesafe.config.{Config, ConfigFactory}
 import com.typesafe.sbt.SbtGit.git
-import nl.focuscura.sbtrancherdeploy.RancherDeploymentPlugin.autoImport.RancherDeploymentResult
 import nl.focuscura.sbtrancherdeploy.rancherclient.RancherClient
 import sbt.Keys._
 import sbt.{Command, _}
@@ -15,22 +14,19 @@ import scala.util.Try
 object RancherDeploymentPlugin extends AutoPlugin {
   override def trigger = allRequirements
 
+  // rancherTargetEnvironment is only to be set from within the rancher-deploy-to command, hence private
   private lazy val rancherTargetEnvironment = settingKey[Option[String]]("The target rancher environment")
-  private lazy val rancherDeploymentResultAttribute = AttributeKey[RancherDeploymentResult]("rancherDeploymentResult")
   object autoImport {
     lazy val rancherDeployDryRun = settingKey[Boolean]("When this is true, do a dry-run, ie. don't actually deploy")
     lazy val rancherDockerImage = taskKey[String]("Returns the docker image UUID that should be deployed")
     lazy val rancherAllowDeployment = taskKey[Boolean]("Returns true if deployment is allowed, false otherwise")
     lazy val rancherServices = taskKey[Seq[String]]("Services to upgrade once the docker image is pushed")
 
-    lazy val rancherTest = taskKey[Unit]("")
-
-    lazy val rancherDeploy = taskKey[RancherDeploymentResult]("Build docker image, push it to Docker hub, upgrade the services, when upgrade can be finished, do so, otherwise roll back")
+    lazy val rancherDeploy = taskKey[Unit]("Build docker image, push it to Docker hub, upgrade the services, when upgrade can be finished, do so, otherwise roll back")
     lazy val rancherUpgrade = taskKey[Unit]("Build docker image, push it to Docker hub, upgrade services returned by rancherServices")
-    lazy val rancherFinishUpgrade = taskKey[RancherDeploymentResult]("Finish upgrade of services returned by rancherServices")
-    lazy val rancherRollback = taskKey[RancherDeploymentResult]("Roll back upgrade of services returned by rancherServices")
+    lazy val rancherFinishUpgrade = taskKey[Unit]("Finish upgrade of services returned by rancherServices")
+    lazy val rancherRollback = taskKey[Unit]("Roll back upgrade of services returned by rancherServices")
     lazy val rancherShouldFinishUpgrade = taskKey[Boolean]("Returns true when the upgrade should be finished, false if it should be rolled back")
-    lazy val rancherDeploymentResult = taskKey[Option[RancherDeploymentResult]]("Retrieve the result of the last deployment")
 
     lazy val rancherBaseSettings = Seq(
       rancherServices := Seq(),
@@ -63,29 +59,29 @@ object RancherDeploymentPlugin extends AutoPlugin {
           Def.task[Unit] {}
         }
       }.value,
-      rancherFinishUpgrade := Def.taskDyn[RancherDeploymentResult] {
-        (if (rancherServices.value.nonEmpty) {
+      rancherFinishUpgrade := Def.taskDyn[Unit] {
+        if (rancherServices.value.nonEmpty) {
           rancherActionOnService("finish upgrade") {
             _.finishUpgrade(_)
           }
         } else {
           Def.task[Unit] {}
-        }) map { _ => RancherDeploymentResult.Finished}
+        }
       }.value,
 
-      rancherRollback := Def.taskDyn[RancherDeploymentResult] {
-        (if (rancherServices.value.nonEmpty) {
+      rancherRollback := Def.taskDyn[Unit] {
+        if (rancherServices.value.nonEmpty) {
           rancherActionOnService("roll back") {
             _.rollbackUpgrade(_)
           }
         } else {
           Def.task[Unit] {}
-        }) map { _ => RancherDeploymentResult.RolledBack}
+        }
       }.value,
       rancherShouldFinishUpgrade := true,
       aggregate in rancherDeploy := false,
       test in rancherDeploy := (test in Test).value,
-      rancherDeploy := Def.taskDyn[RancherDeploymentResult] {
+      rancherDeploy := Def.taskDyn[Unit] {
         (rancherAllowDeployment in Global).value
         val p = thisProjectRef.value
         val aggregatesFilter = ScopeFilter(inAggregates(p))
@@ -94,40 +90,41 @@ object RancherDeploymentPlugin extends AutoPlugin {
           Def.taskDyn {
             val aggregatedShouldFinish: Def.Initialize[Task[Boolean]] = rancherShouldFinishUpgrade.all(aggregatesFilter) map (_ forall identity)
             rancherUpgrade.all(aggregatesFilter).value
-            Def.taskDyn[RancherDeploymentResult] {
-              if (aggregatedShouldFinish.value) {
-                rancherFinishUpgrade.all(aggregatesFilter) map {_ => RancherDeploymentResult.Finished}
-              } else {
-                rancherRollback.all(aggregatesFilter) map {_ => RancherDeploymentResult.RolledBack}
+            Def.taskDyn[Unit] {
+              Def.task {} dependsOn {
+                if (aggregatedShouldFinish.value) {
+                  rancherFinishUpgrade.all(aggregatesFilter)
+                } else {
+                  rancherRollback.all(aggregatesFilter) andFinally {
+                    throw new Exception(s"Upgrade rolled back based on ${rancherShouldFinishUpgrade.key.label}")
+                  }
+
+                }
               }
             }
           }
         }
       }.value,
-      rancherDeploymentResult := state.value.get(rancherDeploymentResultAttribute),
 
       commands += Command.single("rancher-deploy-to") { (state, environment) =>
         val extracted = Project.extract(state)
         val newEnvironment = (rancherTargetEnvironment in Global) := Some(environment)
         val stateWithEnvironment = extracted.append(newEnvironment, state)
 
-        val result = Project.runTask(rancherDeploy, stateWithEnvironment, true) match {
-          case None => RancherDeploymentResult.NoDeploymentDefined
-          case Some((_, Inc(failure))) => RancherDeploymentResult.Failed(Option(failure.getCause))
-          case Some((_, Value(v: RancherDeploymentResult))) => v
+        val result = Project.runTask(rancherDeploy, stateWithEnvironment, true)
+        result match {
+          case None => state.fail
+          case Some((_, Inc(_))) => state.fail
+          case _ => state
         }
-        state.put(rancherDeploymentResultAttribute, result)
+//        match {
+//          case None => RancherDeploymentResult.NoDeploymentDefined
+//          case Some((_, Inc(failure))) => RancherDeploymentResult.Failed(Option(failure.getCause))
+//          case Some((_, Value(v: RancherDeploymentResult))) => v
+//        }
+//        state.put(rancherDeploymentResultAttribute, result)
       }
     )
-
-    sealed trait RancherDeploymentResult
-    object RancherDeploymentResult {
-      case class Failed(cause: Option[Throwable]) extends RancherDeploymentResult
-      case object Finished extends RancherDeploymentResult
-      case object RolledBack extends RancherDeploymentResult
-      case object NoDeploymentDefined extends RancherDeploymentResult
-
-    }
   }
 
   import autoImport._
@@ -135,7 +132,7 @@ object RancherDeploymentPlugin extends AutoPlugin {
   override lazy val projectSettings = rancherBaseSettings
 
 
-  case class DeploymentConfig(environment: String, config: Config) {
+  private case class DeploymentConfig(environment: String, config: Config) {
     import scala.collection.JavaConversions._
     def allowedBranches: Set[String] = Try(config.getStringList("allowed-branches").toSet).getOrElse(Set("*"))
     def allowAnyBranch: Boolean = allowedBranches contains "*"

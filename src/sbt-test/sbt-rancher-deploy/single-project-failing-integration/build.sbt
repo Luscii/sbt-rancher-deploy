@@ -9,11 +9,3 @@ rancherShouldFinishUpgrade := {
   streams.value.log.info("This is a dummy integration test that fails")
   false
 }
-
-lazy val verifyDeploymentResult = taskKey[Unit]("")
-verifyDeploymentResult := {
-  val deploymentResult = rancherDeploymentResult.value
-  val expected = Some(RancherDeploymentResult.RolledBack)
-  assert(deploymentResult == expected, s"expected $expected, actual $deploymentResult")
-  streams.value.log.info("Deployment result as expected")
-}
