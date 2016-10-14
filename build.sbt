@@ -2,7 +2,7 @@ import sbt._
 import Defaults._
 lazy val sbtRancherDeploy = (project in file("."))
   .settings(
-
+    fork in compile := true,
     version := "0.1.3",
     organization := "nl.focuscura",
     scalaVersion := "2.10.6",
