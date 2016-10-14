@@ -13,7 +13,7 @@ To enable the plugin, create a file `project/rancherDeployment.sbt` with the fol
 
 ```scala
 lazy val root = (project in file(".")).dependsOn(rancherDeployPlugin)
-lazy val rancherDeployPlugin = RootProject(uri("ssh://git@github.com/focuscura/sbt-rancher-deploy.git#0.1.1"))
+lazy val rancherDeployPlugin = RootProject(uri("ssh://git@github.com/focuscura/sbt-rancher-deploy.git#0.1.2"))
 ```
 
 Then, in your main `build.sbt` file, you can use the following settings in your projects (assuming you use `sbt-docker` to build the Docker images:
@@ -134,3 +134,42 @@ The `rancher-deploy-to` command performs the tasks below on the currently select
 1. Run unit tests for the current project and all its aggregates, abort if any test fails.
 2. Upgrade all services for the current project and its aggregates.
 3. Collect the results of the `rancherShouldFinishUpgrade` of the current project and its aggregates. If any of these results is `false`, roll back all the upgraded services and abort. If all of these results are `true`, finish the upgrades of all services, and return success.
+
+
+
+
+## Development of `sbt-rancher-deploy` ##
+
+### Testing the `sbt-rancher-deploy` plugin ###
+
+In the `src/sbt-test` folder there are several projects that are used as test cases for the `sbt-scripted` plugin. A description of how this works can be found [here][1].
+
+Basically it boils down to this:
+
+Each folder in `src/sbt-test/sbt-rancher-deploy` is a seperate sbt test project that makes use of the `sbt-rancher-deploy` plugin. Each of these test projects contain a test script, conveniently named `test`. This file contains sbt commands that are executed on a test run when the `scripted` sbt task is started from the `sbt-rancher-deploy` root. The test project directory is copied to a temporary location, `scripted` then starts a seperate sbt process in which the commands from the test script are run on the test project copy.
+
+The format of the `test` file is this:
+
+* `#` starts a one-line comment
+* `> <sbt-task-or-command> [arg ...]` sends a task to sbt (and tests if it succeeds)
+* `$ <file-command> [arg ...]` performs a file command (and tests if it succeeds)
+* `-> <sbt-task-or-command> [arg ...]` sends a task to sbt, but expects it to fail
+* `-$ <file-command> [arg ...]` performs a file command, but expects it to fail
+
+A file command is one of the following
+
+* `touch path [path ...]` creates or updates the timestamp on the files
+* `delete path [path ...]` deletes the files
+* `exists path [path ...]` checks if the files exist
+* `mkdir path [path ...]` creates dirs
+* `absent path [path ...]` checks if the files don't exist
+* `newer source target` checks if source is newer
+* `pause` pauses until enter is pressed
+* `sleep time` sleeps
+* `exec command [args ...]` runs the command in another process
+* `copy-file fromPath toPath` copies the file
+* `copy fromPath [fromPath ...] toDir` copies the paths to toDir preserving relative structure
+* `copy-flat fromPath [fromPath ...] toDir` copies the paths to toDir flat
+
+
+[1]: http://eed3si9n.com/testing-sbt-plugins
