@@ -146,7 +146,7 @@ In the `src/sbt-test` folder there are several projects that are used as test ca
 
 Basically it boils down to this:
 
-Each folder in `src/sbt-test/sbt-rancher-deploy` is a seperate sbt test project that makes use of the `sbt-rancher-deploy` plugin. Each of these test projects contain a test script, conveniently named `test`. This file contains sbt commands that are executed on a test run when the `scripted` sbt task is started from the `sbt-rancher-deploy` root. The test project directory is copied to a temporary location, `scripted` then starts a seperate sbt process in which the commands from the test script are run on the test project copy.
+Each folder in `src/sbt-test/sbt-rancher-deploy` is a separate sbt test project that makes use of the `sbt-rancher-deploy` plugin. Each of these test projects contains a test script, conveniently named `test`. This file contains sbt commands that are executed on a test run when the `scripted` sbt task is started from the `sbt-rancher-deploy` root. The test project directory is copied to a temporary location, `scripted` then starts a separate sbt process in which the commands from the test script are run on the test project copy. The tests produce a lot of output, but if the `scripted` task finishes with `success` this means all tests passed.
 
 The format of the `test` file is this:
 
