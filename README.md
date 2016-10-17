@@ -12,8 +12,15 @@ You can use a plugin like [`sbt-docker`][1] to build Docker images of your proje
 To enable the plugin, create a file `project/rancherDeployment.sbt` with the following content:
 
 ```scala
+addSbtPlugin("io.get-coursier" % "sbt-coursier" % "1.0.0-M13")
 lazy val root = (project in file(".")).dependsOn(rancherDeployPlugin)
-lazy val rancherDeployPlugin = RootProject(uri("ssh://git@github.com/focuscura/sbt-rancher-deploy.git#0.1.2"))
+lazy val rancherDeployPlugin = RootProject(uri("ssh://git@github.com/focuscura/sbt-rancher-deploy.git#0.1.4"))
+```
+
+Also, add a file `project/project/build.sbt` with the following content:
+
+```scala
+addSbtPlugin("io.get-coursier" % "sbt-coursier" % "1.0.0-M13")
 ```
 
 Then, in your main `build.sbt` file, you can use the following settings in your projects (assuming you use `sbt-docker` to build the Docker images:
