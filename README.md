@@ -3,7 +3,7 @@
 `sbt-rancher-deploy` is a plugin for sbt that allows deployment of
 Docker images to Rancher environments.
 
-You can use a plugin like [`sbt-docker`][1] to build Docker images of your projects and push the to a Docker image repository of your liking, and then use `sbt-rancher-deploy` to deploy these images to a Rancher stack.
+You can use a plugin like [`sbt-docker`][1] to build Docker images of your projects and push them to a Docker image repository of your liking, and then use `sbt-rancher-deploy` to deploy these images to a Rancher stack.
 
 [1]:https://github.com/marcuslonnberg/sbt-docker
 
@@ -149,7 +149,7 @@ The `rancher-deploy-to` command performs the tasks below on the currently select
 
 ### Testing the `sbt-rancher-deploy` plugin ###
 
-In the `src/sbt-test` folder there are several projects that are used as test cases for the `sbt-scripted` plugin. A description of how this works can be found [here][1].
+In the `src/sbt-test` folder there are several projects that are used as test cases for the `sbt-scripted` plugin. A description of how this works can be found [here][2].
 
 Basically it boils down to this:
 
@@ -179,4 +179,4 @@ A file command is one of the following
 * `copy-flat fromPath [fromPath ...] toDir` copies the paths to toDir flat
 
 
-[1]: http://eed3si9n.com/testing-sbt-plugins
+[2]: http://eed3si9n.com/testing-sbt-plugins
