@@ -3,7 +3,7 @@ lazy val baseSettings = Seq(
   version := "0.1",
   organization := "foo",
   rancherDeployDryRun := true,
-  libraryDependencies += "org.scalatest" %% "scalatest" % "2.2.6" % "test"
+  libraryDependencies += "org.scalatest" %% "scalatest" % "2.+" % "test"
 )
 
 lazy val root = project.in(file("."))
