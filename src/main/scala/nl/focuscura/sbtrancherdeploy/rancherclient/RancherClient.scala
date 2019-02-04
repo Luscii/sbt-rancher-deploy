@@ -2,6 +2,9 @@ package nl.focuscura.sbtrancherdeploy.rancherclient
 
 import java.net.URI
 
+import akka.actor.ActorSystem
+import akka.stream.ActorMaterializer
+
 import scala.collection.immutable
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
@@ -142,14 +145,20 @@ case class ActualRancherClient(baseUrl: String, basicAuthCredentials: Option[(St
   import RancherClient._
 
   import play.api.libs.ws._
-  import play.api.libs.ws.ning._
-  val client = NingWSClient()
+  import play.api.libs.ws.ahc._
+  import play.api.libs.ws.DefaultBodyReadables._
+  import play.api.libs.ws.DefaultBodyWritables._
 
-  def makeRequest(path: String): WSRequest = {
+  implicit val system = ActorSystem()
+  implicit val materializer = ActorMaterializer()
+
+  val client = StandaloneAhcWSClient()
+
+  def makeRequest(path: String): StandaloneWSRequest = {
     val uri = new URI(path)
     val urlString = if (uri.isAbsolute) uri.toString else s"$baseUrl$path"
     logger.debug(s"Creating request for $path")
-    val request = client.url(urlString).withRequestTimeout(2.seconds.toMillis)
+    val request = client.url(urlString).withRequestTimeout(2.seconds)
     basicAuthCredentials match {
       case Some((username, password)) => request.withAuth(username, password, WSAuthScheme.BASIC)
       case _ => request
@@ -242,7 +251,7 @@ case class ActualRancherClient(baseUrl: String, basicAuthCredentials: Option[(St
               "launchConfig" -> service.launchConfig.withImage(newImage).jsValue
             )
           )
-          makeRequest(service.actions.upgrade).withHeaders(
+          makeRequest(service.actions.upgrade).addHttpHeaders(
             "Content-Type" -> "application/json"
           ) post payload.toString map (Json parse _.body) map (ServiceState(_))
         }
