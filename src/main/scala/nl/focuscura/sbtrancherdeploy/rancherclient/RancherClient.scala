@@ -4,6 +4,7 @@ import java.net.URI
 
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
+import com.typesafe.config.ConfigFactory
 
 import scala.collection.immutable
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -149,10 +150,12 @@ case class ActualRancherClient(baseUrl: String, basicAuthCredentials: Option[(St
   import play.api.libs.ws.DefaultBodyReadables._
   import play.api.libs.ws.DefaultBodyWritables._
 
-  implicit val system = ActorSystem()
+  val cl = getClass.getClassLoader
+  val config = ConfigFactory.load(cl)
+  implicit val system = ActorSystem("system", config, cl)
   implicit val materializer = ActorMaterializer()
 
-  val client = StandaloneAhcWSClient()
+  val client = StandaloneAhcWSClient(AhcWSClientConfigFactory.forConfig(config, cl))
 
   def makeRequest(path: String): StandaloneWSRequest = {
     val uri = new URI(path)
